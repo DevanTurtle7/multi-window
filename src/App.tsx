@@ -1,65 +1,106 @@
 import { useEffect } from 'react';
+import { useLocalStorage, useSessionStorage } from 'usehooks-ts';
 import Plane from './components/Plane';
+import { Windows } from './types/types';
 
 export const countKey = 'windowCount';
 export const windowsKey = 'windows';
 export const windowIdKey = 'windowId';
 
-export default function App() {
-  useEffect(() => {
-    const updateWindowCount = (increment: number) => {
-      const keyValue = Number(localStorage.getItem(countKey)) ?? 0;
-      localStorage.setItem(countKey, String(keyValue + increment));
-      window.dispatchEvent(new Event('storage'));
-    };
-    const onBeforeUnload = () => updateWindowCount(-1);
+const pollingRate = 100;
 
-    updateWindowCount(1);
+export default function App() {
+  const [count, setCount] = useLocalStorage<number>(countKey, 0);
+  const [windows, setWindows] = useLocalStorage<Windows>(windowsKey, {});
+  const [id, setId] = useSessionStorage<number | null>(windowIdKey, null);
+
+  useEffect(() => {
+    setCount(count + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const onBeforeUnload = () => {
+      setCount(count - 1);
+    };
+
     window.addEventListener('beforeunload', onBeforeUnload);
 
-    return () => {
-      updateWindowCount(-1);
-      window.removeEventListener('beforeunload', onBeforeUnload);
-    };
-  });
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [count, setCount]);
 
   useEffect(() => {
-    if (sessionStorage.getItem(windowIdKey) == null) {
-      const count = Number(localStorage.getItem(countKey)) ?? 0;
-      const windows = JSON.parse(localStorage.getItem(windowsKey) ?? '{}');
-      let id = count;
+    if (id == null) {
+      let tempId = count;
 
-      while (id in windows) {
-        id++;
+      while (tempId in windows) {
+        tempId++;
       }
 
-      windows[id] = {};
-      sessionStorage.setItem(windowIdKey, String(id));
-      localStorage.setItem(windowsKey, JSON.stringify(windows));
+      setId(tempId);
+      setWindows({
+        ...windows,
+        [tempId]: {
+          x: window.screenX,
+          y: window.screenY,
+          height: window.innerHeight,
+          width: window.innerWidth,
+        },
+      });
+      window.dispatchEvent(new Event('storage'));
     }
-  });
+  }, [id, setId, windows, setWindows, count]);
 
   useEffect(() => {
     const onResize = () => {
-      const id = Number(sessionStorage.getItem(windowIdKey));
-
       if (id != null) {
-        const windows = JSON.parse(localStorage.getItem(windowsKey) ?? '{}');
         const width = window.innerWidth;
         const height = window.innerHeight;
+        const currentWindow = windows[id];
 
-        windows[id] = {
-          width,
-          height,
-        };
+        setWindows({
+          ...windows,
+          [id]: {
+            ...currentWindow,
+            width,
+            height,
+          },
+        });
 
-        localStorage.setItem(windowsKey, JSON.stringify(windows));
+        window.dispatchEvent(new Event('storage'));
       }
     };
 
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  });
+  }, [id, windows, setWindows]);
+
+  useEffect(() => {
+    const checkPosition = () => {
+      if (id != null) {
+        const currentWindow = windows[id];
+        const { x, y } = currentWindow;
+        const screenX = window.screenX;
+        const screenY = window.screenY;
+
+        if (x != screenX || y != screenY) {
+          setWindows({
+            ...windows,
+            [id]: {
+              ...currentWindow,
+              x: screenX,
+              y: screenY,
+            },
+          });
+
+          window.dispatchEvent(new Event('storage'));
+        }
+      }
+    };
+
+    const interval = setInterval(checkPosition, pollingRate);
+    return () => clearInterval(interval);
+  }, [id, windows, setWindows]);
 
   return (
     <>
