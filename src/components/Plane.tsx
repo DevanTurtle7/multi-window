@@ -1,11 +1,11 @@
-import {useState} from 'react';
-import {keyName} from './App';
+import { useState } from 'react';
+import { countKey } from '../App';
 
 export default function Plane() {
   const [windowCount, setWindowCount] = useState(0);
 
   window.addEventListener('storage', () => {
-    const count = Number(localStorage.getItem(keyName));
+    const count = Number(localStorage.getItem(countKey));
 
     if (count != windowCount) {
       setWindowCount(count);
